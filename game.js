@@ -1,268 +1,161 @@
-// THEME: Replace these colors and nouns after the theme roulette.
-const THEME = {
-  background: "#0b1426", grid: "#1b2a43", player: "#70edcf",
-  collectible: "#ffdc76", hazard: "#ff778e", wall: "#657b9e", collectiblePlural: "sparks"
-};
-
-// RULES: Speeds are in Canvas pixels per second.
-const RULES = {
-  playerSpeed: 270, hazardSpeed: 115, speedPerLevel: 22,
-  maxHazardSpeed: 235, pointsPerLevel: 5, maxHazards: 8, maxWalls: 8
-};
-
-const canvas = document.querySelector("#arena");
-const ctx = canvas.getContext("2d");
-const { width, height } = canvas;
-const overlay = document.querySelector("#overlay");
-const action = document.querySelector("#action");
-const scoreLabel = document.querySelector("#score");
-const levelLabel = document.querySelector("#level");
-const bestLabel = document.querySelector("#best");
-const panelDetail = document.querySelector("#panel-detail");
-const panelTitle = document.querySelector("#panel-title");
-const status = document.querySelector("#status");
-const controls = ["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d"];
-const keys = new Set();
-const touches = new Map();
-const storageKey = "pixel-playground-best";
-
-let state = "ready";
-let player, collectible, hazards, walls, score, level;
-let best = 0;
-let lastTime;
-
-try {
-  best = Number(localStorage.getItem(storageKey)) || 0;
-} catch {
-  // The best score still works for this page if storage is disabled.
-}
-
-function resetRound() {
-  player = { x: width / 2, y: height / 2, size: 26 };
-  hazards = [];
-  walls = [];
-  collectible = undefined;
-  score = 0;
-  level = 1;
-  addHazard();
-  addHazard();
-  placeCollectible();
-  updateHud();
-}
-
-function updateHud() {
-  scoreLabel.textContent = score;
-  levelLabel.textContent = level;
-  bestLabel.textContent = best;
-}
-
-function startRound() {
-  clearInput();
-  resetRound();
-  state = "playing";
-  lastTime = undefined;
-  overlay.hidden = true;
-  canvas.focus();
-}
-
-function endRound() {
-  state = "over";
-  clearInput();
-  status.textContent = "RUN COMPLETE";
-  panelTitle.textContent = "Drone collision!";
-  panelDetail.textContent = `Score ${score} · Level ${level} · Best ${best}`;
-  action.textContent = "Play again";
-  overlay.hidden = false;
-  action.focus();
-}
-
-// All positions describe the center of an object.
-function overlaps(a, b, gap = 0) {
-  const reach = (a.size + b.size) / 2 + gap;
-  return Math.abs(a.x - b.x) < reach && Math.abs(a.y - b.y) < reach;
-}
-
-function openSpot(size, blockers, gap = 0) {
-  // Scan a grid so placement always finishes, even when the arena gets busy.
-  const spots = [];
-  for (let y = 24; y <= height - 24; y += 28) {
-    for (let x = 24; x <= width - 24; x += 28) {
-      const spot = { x, y, size };
-      if (blockers.every(blocker => !overlaps(spot, blocker, gap)) &&
-          walls.every(wall => !overlaps(spot, wall, 8))) spots.push(spot);
+// A fixed, connected course. Coordinates describe the stickman's feet/center.
+const canvas = document.querySelector('#arena');
+const ctx = canvas.getContext('2d');
+const ui = Object.fromEntries(['overlay', 'action', 'score', 'level', 'best', 'status', 'panel-title', 'panel-detail'].map(id => [id, document.getElementById(id)]));
+const W = canvas.width, H = canvas.height;
+const RULES = { speed: 185, radius: 11, ballRadius: 17 };
+const rows = [110, 290, 470, 650];
+const corridors = rows.map(y => ({ x: 40, y: y - 42, w: 1020, h: 84 }));
+corridors.push({ x: 976, y: 68, w: 84, h: 264 }, { x: 40, y: 248, w: 84, h: 264 }, { x: 976, y: 428, w: 84, h: 264 });
+const bunkers = rows.flatMap((y, row) => [260, 500, 740].map(x => ({ x, y: y - 100, w: 64, h: 68, row })));
+const floor = [...corridors, ...bunkers];
+const spikes = rows.flatMap((y, row) => [200, 410, 620, 830].map((x, i) => ({ x, y: i % 2 ? y + 10 : y - 42, w: 48, h: 32, row })));
+const cannons = rows.map((y, i) => ({ x: i % 2 ? 61 : 1039, y, direction: i % 2 ? 1 : -1, timer: 2 + i * .35, row: i }));
+const keys = new Set(), touches = new Map();
+let player, balls, state = 'ready', elapsed = 0, attempts = 0, best = 0, previousTime;
+try { best = Number(localStorage.getItem('pixel-gauntlet-best')) || 0; } catch {}
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const inside = (x, y, r) => x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+function walkable(x, y) {
+  // Sample the full footprint, including corners, across joined corridor rectangles.
+  for (const dx of [-RULES.radius, 0, RULES.radius]) {
+    for (const dy of [-RULES.radius, 0, RULES.radius]) {
+      if (!floor.some(r => inside(x + dx, y + dy, r))) return false;
     }
   }
-  return spots[Math.floor(Math.random() * spots.length)];
+  return true;
 }
-
-function addHazard() {
-  const blockers = collectible ? [player, collectible, ...hazards] : [player, ...hazards];
-  const spot = openSpot(28, blockers, 50) ?? openSpot(28, blockers, 0);
-  if (!spot) return;
-  const angle = Math.random() * Math.PI * 2;
-  hazards.push({ ...spot, dx: Math.cos(angle), dy: Math.sin(angle) });
+function circleRect(x, y, radius, rect) {
+  return Math.hypot(x - clamp(x, rect.x, rect.x + rect.w), y - clamp(y, rect.y, rect.y + rect.h)) < radius;
 }
-
-function placeCollectible() {
-  const blockers = [player, ...hazards];
-  collectible = openSpot(22, blockers, 20) ?? openSpot(22, blockers);
+function reset() {
+  player = { x: 70, y: rows[0], step: 0 };
+  balls = []; elapsed = 0; previousTime = undefined;
+  cannons.forEach((c, i) => c.timer = 2 + i * .35);
+  keys.clear(); touches.clear(); hud();
 }
-
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
+function start() {
+  reset(); attempts++; state = 'playing'; ui.overlay.hidden = true; canvas.focus();
 }
-
-function addWall() {
-  if (walls.length >= RULES.maxWalls) return;
-  const spots = [];
-  // Separate blocks leave corridors wider than the player and clear arena edges.
-  for (let y = 96; y <= height - 96; y += 120) {
-    for (let x = 96; x <= width - 96; x += 120) {
-      const spot = { x, y, size: 56 };
-      if ([player, ...hazards, ...walls].every(object => !overlaps(spot, object, 24))) {
-        spots.push(spot);
-      }
-    }
+function finish(won, reason) {
+  state = won ? 'won' : 'over'; keys.clear(); touches.clear();
+  if (won && (!best || elapsed < best)) {
+    best = elapsed;
+    try { localStorage.setItem('pixel-gauntlet-best', String(best)); } catch {}
   }
-  if (spots.length) walls.push(spots[Math.floor(Math.random() * spots.length)]);
+  ui.status.textContent = won ? 'COURSE CLEARED' : 'RUN ENDED';
+  ui['panel-title'].textContent = won ? 'You made it out.' : reason;
+  ui['panel-detail'].textContent = won ? `Exit reached in ${elapsed.toFixed(1)} seconds. Try for a faster escape.` : 'One hit ends the run. Watch the cannon warning and duck into the blue bunkers.';
+  ui.action.textContent = won ? 'Run again' : 'Retry course';
+  ui.overlay.hidden = false; ui.action.focus(); hud();
 }
-
-function moveAxis(object, axis, distance) {
-  const edge = object.size / 2;
-  const limit = axis === "x" ? width : height;
-  const next = clamp(object[axis] + distance, edge, limit - edge);
-  object[axis] = next;
-  for (const wall of walls) {
-    if (overlaps(object, wall)) {
-      object[axis] = wall[axis] - Math.sign(distance) * (object.size + wall.size) / 2;
-    }
-  }
-  return object[axis] !== next || next === edge || next === limit - edge;
+function section() { return clamp(Math.round((player.y - 110) / 180), 0, 3); }
+function hud() {
+  ui.score.textContent = `${elapsed.toFixed(1)}s`;
+  ui.level.textContent = `${section() + 1} / 4`;
+  ui.best.textContent = best ? `${best.toFixed(1)}s` : '—';
 }
-
-function movePlayer(dt) {
-  const held = key => keys.has(key) || [...touches.values()].includes(key);
-  const dx = Number(held("arrowright") || held("d")) - Number(held("arrowleft") || held("a"));
-  const dy = Number(held("arrowdown") || held("s")) - Number(held("arrowup") || held("w"));
-  // Normalize so moving diagonally is just as fast.
-  const distance = RULES.playerSpeed * dt / (Math.hypot(dx, dy) || 1);
-  moveAxis(player, "x", dx * distance);
-  moveAxis(player, "y", dy * distance);
-}
-
-function moveHazards(dt) {
-  const speed = Math.min(RULES.maxHazardSpeed, RULES.hazardSpeed + (level - 1) * RULES.speedPerLevel);
-  for (const hazard of hazards) {
-    if (moveAxis(hazard, "x", hazard.dx * speed * dt)) hazard.dx *= -1;
-    if (moveAxis(hazard, "y", hazard.dy * speed * dt)) hazard.dy *= -1;
-  }
-}
-
 function update(dt) {
-  movePlayer(dt);
-  moveHazards(dt);
-  if (hazards.some(hazard => overlaps(player, hazard))) {
-    endRound();
-    return;
+  elapsed += dt;
+  const held = key => keys.has(key) || [...touches.values()].includes(key);
+  const dx = Number(held('d') || held('arrowright')) - Number(held('a') || held('arrowleft'));
+  const dy = Number(held('s') || held('arrowdown')) - Number(held('w') || held('arrowup'));
+  const distance = RULES.speed * dt / (Math.hypot(dx, dy) || 1);
+  // Small steps keep collision reliable even on slower screens.
+  const steps = Math.max(1, Math.ceil(distance / 3));
+  for (let i = 0; i < steps; i++) {
+    if (walkable(player.x + dx * distance / steps, player.y)) player.x += dx * distance / steps;
+    if (walkable(player.x, player.y + dy * distance / steps)) player.y += dy * distance / steps;
+    if (spikes.some(r => circleRect(player.x, player.y, RULES.radius, r))) { finish(false, 'Caught by the spikes.'); return; }
   }
-  if (collectible && overlaps(player, collectible)) {
-    score += 1;
-    if (score > best) {
-      best = score;
-      try {
-        localStorage.setItem(storageKey, best);
-      } catch {
-        // Keep the in-memory score.
-      }
+  if (dx || dy) player.step += dt * 12;
+  for (const cannon of cannons) {
+    cannon.timer -= dt;
+    if (cannon.timer <= 0) {
+      balls.push({ x: cannon.x + cannon.direction * 26, y: cannon.y, vx: cannon.direction * (270 + cannon.row * 35) });
+      cannon.timer += 2.7 - cannon.row * .25;
     }
-    if (score % RULES.pointsPerLevel === 0) {
-      level += 1;
-      addWall();
-      if (hazards.length < RULES.maxHazards) addHazard();
-    }
-    placeCollectible();
-    updateHud();
   }
+  for (const ball of balls) {
+    const oldX = ball.x;
+    ball.x += ball.vx * dt;
+    // Swept collision prevents a fast cannonball skipping through the player.
+    const nearestX = clamp(player.x, Math.min(oldX, ball.x), Math.max(oldX, ball.x));
+    if (Math.hypot(player.x - nearestX, player.y - ball.y) < RULES.radius + RULES.ballRadius) {
+      finish(false, 'Hit by a cannonball.'); return;
+    }
+  }
+  balls = balls.filter(b => b.x > 40 && b.x < 1060);
+  if (player.x < 96 && player.y > 622) { finish(true); return; }
+  hud();
 }
-
-function drawSquare(object, color) {
-  ctx.fillStyle = color;
-  const half = object.size / 2;
-  ctx.fillRect(object.x - half, object.y - half, object.size, object.size);
+function rect(r, color) { ctx.fillStyle = color; ctx.fillRect(r.x, r.y, r.w, r.h); }
+function text(value, x, y, color = '#aabbd0', size = 12) {
+  ctx.fillStyle = color; ctx.font = `600 ${size}px monospace`; ctx.textAlign = 'center'; ctx.fillText(value, x, y);
 }
-
 function draw() {
-  ctx.fillStyle = THEME.background;
-  ctx.fillRect(0, 0, width, height);
-  ctx.fillStyle = THEME.grid;
-  for (let x = 0; x < width; x += 24) ctx.fillRect(x, 0, 1, height);
-  for (let y = 0; y < height; y += 24) ctx.fillRect(0, y, width, 1);
-
-  for (const wall of walls) {
-    drawSquare(wall, THEME.wall);
-    ctx.strokeStyle = THEME.grid;
-    ctx.lineWidth = 2;
-    ctx.strokeRect(wall.x - wall.size / 2 + 4, wall.y - wall.size / 2 + 4,
-      wall.size - 8, wall.size - 8);
+  ctx.fillStyle = '#0b111b'; ctx.fillRect(0, 0, W, H);
+  for (let x = 0; x < W; x += 20) { ctx.strokeStyle = '#111e2c'; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+  for (const r of floor) { rect({ x: r.x - 3, y: r.y - 3, w: r.w + 6, h: r.h + 6 }, '#51627a'); }
+  for (const r of floor) rect(r, '#1e2c3d');
+  for (const b of bunkers) {
+    rect(b, '#153f50');
+    text('BUNKER', b.x + 32, b.y + 22, '#75d8ee', 10);
+    text('⌄', b.x + 32, b.y + 43, '#75d8ee', 20);
   }
-
-  if (collectible) {
-    ctx.save();
-    ctx.translate(collectible.x, collectible.y);
-    ctx.rotate(Math.PI / 4);
-    drawSquare({ x: 0, y: 0, size: collectible.size / Math.SQRT2 }, THEME.collectible);
-    ctx.restore();
-  }
-  for (const hazard of hazards) {
-    drawSquare(hazard, THEME.hazard);
-    ctx.fillStyle = THEME.background;
-    ctx.font = "bold 22px monospace";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText("×", hazard.x, hazard.y + 1);
-  }
-  drawSquare(player, THEME.player);
-  ctx.fillStyle = THEME.background;
-  ctx.fillRect(player.x - 7, player.y - 4, 4, 5);
-  ctx.fillRect(player.x + 3, player.y - 4, 4, 5);
-}
-
-function frame(time) {
-  // Cap the step after interruptions to avoid jumping across the arena.
-  const dt = lastTime === undefined ? 0 : Math.min((time - lastTime) / 1000, 0.033);
-  lastTime = time;
-  if (state === "playing" && !document.hidden) update(dt);
-  draw();
-  requestAnimationFrame(frame);
-}
-
-function clearInput() {
-  keys.clear();
-  touches.clear();
-}
-
-action.addEventListener("click", startRound);
-window.addEventListener("keydown", event => {
-  const key = event.key.toLowerCase();
-  if (state !== "playing" || !controls.includes(key) ||
-      event.altKey || event.ctrlKey || event.metaKey) return;
-  event.preventDefault();
-  keys.add(key);
-});
-window.addEventListener("keyup", event => keys.delete(event.key.toLowerCase()));
-window.addEventListener("blur", clearInput);
-document.addEventListener("visibilitychange", clearInput);
-for (const button of document.querySelectorAll("[data-key]")) {
-  button.addEventListener("pointerdown", event => {
-    if (state !== "playing") return;
-    button.setPointerCapture(event.pointerId);
-    touches.set(event.pointerId, button.dataset.key);
+  rows.forEach((y, i) => {
+    text(`SECTOR 0${i + 1}  ${i % 2 ? '←' : '→'}`, 550, y + 36, '#8095ad', 11);
+    ctx.setLineDash([5, 12]); ctx.strokeStyle = '#435267'; ctx.beginPath(); ctx.moveTo(125, y); ctx.lineTo(975, y); ctx.stroke(); ctx.setLineDash([]);
   });
-  for (const name of ["pointerup", "pointercancel", "lostpointercapture"]) {
-    button.addEventListener(name, event => touches.delete(event.pointerId));
+  rect({ x: 43, y: 74, w: 55, h: 72 }, '#185745'); text('ENTRY', 71, 61, '#70edcf', 11);
+  rect({ x: 43, y: 614, w: 55, h: 72 }, '#626024'); text('EXIT', 71, 713, '#ffdc76', 14);
+  for (const r of spikes) {
+    for (let x = r.x; x < r.x + r.w; x += 12) {
+      ctx.fillStyle = '#fa7c85'; ctx.beginPath();
+      const top = r.y < rows[r.row];
+      ctx.moveTo(x, top ? r.y : r.y + r.h); ctx.lineTo(x + 6, top ? r.y + r.h : r.y); ctx.lineTo(x + 12, top ? r.y : r.y + r.h); ctx.fill();
+    }
   }
+  for (const c of cannons) {
+    if (c.timer < .85) {
+      ctx.strokeStyle = `rgba(255,120,90,${.2 + .2 * Math.sin(elapsed * 22)})`; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(99, c.y); ctx.lineTo(1001, c.y); ctx.stroke();
+      text('FIRING', c.x, c.y - 49, '#ff9e75', 10);
+    }
+    rect({ x: c.x - 15, y: c.y - 22, w: 30, h: 44 }, '#8994a2');
+    rect({ x: c.x + (c.direction > 0 ? 0 : -28), y: c.y - 9, w: 28, h: 18 }, '#ffab75');
+  }
+  for (const b of balls) {
+    ctx.fillStyle = '#ff8c65'; ctx.beginPath(); ctx.arc(b.x, b.y, RULES.ballRadius + 3, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#26313e'; ctx.beginPath(); ctx.arc(b.x, b.y, RULES.ballRadius, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#b2bfcb'; ctx.beginPath(); ctx.arc(b.x - 5, b.y - 5, 4, 0, Math.PI * 2); ctx.fill();
+  }
+  // Stickman stays inside the collision footprint; legs animate while moving.
+  ctx.strokeStyle = '#8ff5d6'; ctx.fillStyle = '#8ff5d6'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.arc(player.x, player.y - 8, 4, 0, Math.PI * 2); ctx.fill();
+  const stride = Math.sin(player.step) * 5;
+  ctx.beginPath(); ctx.moveTo(player.x, player.y - 3); ctx.lineTo(player.x, player.y + 5);
+  ctx.moveTo(player.x - 7, player.y + 1 + stride / 2); ctx.lineTo(player.x, player.y - 1); ctx.lineTo(player.x + 7, player.y + 1 - stride / 2);
+  ctx.moveTo(player.x - 4 - stride / 2, player.y + 11); ctx.lineTo(player.x, player.y + 5); ctx.lineTo(player.x + 4 + stride / 2, player.y + 11); ctx.stroke();
+  text('THE GAUNTLET  /  ONE HIT. NO CHECKPOINTS.', W / 2, 738, '#7c91aa', 12);
 }
-
-panelDetail.textContent = `Grab ${RULES.pointsPerLevel} ${THEME.collectiblePlural} to reach the next level.`;
-resetRound();
-requestAnimationFrame(frame);
+function clearInput() { keys.clear(); touches.clear(); }
+ui.action.addEventListener('click', start);
+window.addEventListener('keydown', event => {
+  const key = event.key.toLowerCase();
+  if (state !== 'playing' || !['w','a','s','d','arrowup','arrowleft','arrowdown','arrowright'].includes(key) || event.ctrlKey || event.metaKey || event.altKey) return;
+  event.preventDefault(); keys.add(key);
+});
+window.addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
+window.addEventListener('blur', clearInput);
+document.addEventListener('visibilitychange', () => { clearInput(); previousTime = undefined; });
+for (const button of document.querySelectorAll('[data-key]')) {
+  button.addEventListener('pointerdown', e => { if (state !== 'playing') return; button.setPointerCapture(e.pointerId); touches.set(e.pointerId, button.dataset.key); });
+  for (const name of ['pointerup','pointercancel','lostpointercapture']) button.addEventListener(name, e => touches.delete(e.pointerId));
+}
+function frame(time) {
+  const dt = previousTime === undefined ? 0 : Math.min((time - previousTime) / 1000, .033);
+  previousTime = time;
+  if (state === 'playing' && !document.hidden) update(dt);
+  draw(); requestAnimationFrame(frame);
+}
+reset(); requestAnimationFrame(frame);

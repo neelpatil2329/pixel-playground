@@ -3,37 +3,37 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Pixel Playground | CTRL + PLAY</title>
+  <title>The Gauntlet | Pixel Playground</title>
   <link rel="stylesheet" href="style.css">
   <script src="game.js" defer></script>
 </head>
 <body>
   <main>
     <header>
-      <p class="eyebrow">CTRL + PLAY <span> / </span> NIT CALICUT</p>
-      <h1>Pixel <em>Playground</em></h1>
-      <p id="mission">Collect sparks. Dodge drones. New walls appear as you level up.</p>
+      <p class="eyebrow">PIXEL PLAYGROUND <span> / </span> HARD MODE</p>
+      <h1>The <em>Gauntlet</em></h1>
+      <p id="mission">One entry. Four lethal corridors. Reach the exit alive.</p>
     </header>
-    <section class="cabinet" aria-label="Arcade game">
+    <section class="cabinet" aria-label="Stickman obstacle course">
       <div class="hud">
-        <div>Score <strong id="score">0</strong></div>
-        <div>Level <strong id="level">1</strong></div>
-        <div>Best <strong id="best">0</strong></div>
+        <div>Time <strong id="score">0.0s</strong></div>
+        <div>Sector <strong id="level">1 / 4</strong></div>
+        <div>Best escape <strong id="best">—</strong></div>
       </div>
       <div class="stage">
-        <canvas id="arena" width="720" height="432" tabindex="0" aria-label="Game arena" aria-describedby="mission controls">This game requires Canvas support.</canvas>
+        <canvas id="arena" width="1100" height="760" tabindex="0" aria-label="Four winding corridors with spikes, cannons and blue bunker alcoves" aria-describedby="mission controls">This game requires Canvas support.</canvas>
         <div class="overlay" id="overlay">
           <div>
-            <p class="eyebrow" id="status" role="status">READY TO PLAY</p>
-            <h2 id="panel-title">Enter the arena</h2>
-            <p id="panel-detail">Grab five sparks to reach the next level.</p>
-            <button id="action" type="button">Start game</button>
+            <p class="eyebrow" id="status" role="status">ONE HIT · NO CHECKPOINTS</p>
+            <h2 id="panel-title">Make it to the other side.</h2>
+            <p id="panel-detail">Follow the winding path from ENTRY to EXIT. Avoid pink spikes. Cannons flash before firing: duck into blue bunkers to let the balls pass. Each sector fires faster.</p>
+            <button id="action" type="button">Enter the gauntlet</button>
           </div>
         </div>
       </div>
       <div class="legend" id="controls">
         <span><kbd>WASD</kbd> or <kbd>↑ ← ↓ →</kbd> to move</span>
-        <span><b class="spark">◆</b> Spark &nbsp; <b class="drone">✕</b> Drone &nbsp; <b class="wall">■</b> Wall</span>
+        <span><b class="drone">▲</b> Spikes &nbsp; <b class="spark">●</b> Cannonballs &nbsp; <b class="bunker">▣</b> Bunker</span>
       </div>
     </section>
     <div class="touch" aria-label="Direction controls">
@@ -42,7 +42,7 @@
       <button data-key="arrowdown" aria-label="Move down">↓</button>
       <button data-key="arrowright" aria-label="Move right">→</button>
     </div>
-    <footer>WORKSHOP BUILD <span> / </span> BUILT FOR REMIXING</footer>
+    <footer>READ THE WARNING <span> / </span> FIND COVER <span> / </span> SURVIVE</footer>
   </main>
 </body>
 </html>

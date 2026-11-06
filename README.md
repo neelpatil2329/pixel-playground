@@ -1,33 +1,27 @@
-# Pixel Playground
+# Pixel Playground — The Gauntlet
 
-**CTRL + PLAY · AI Game Development Workshop · NIT Calicut**
+A difficult, offline stickman obstacle course built with plain HTML, CSS and Canvas JavaScript. Open `index.html` in a modern browser. No install or build step is needed.
 
-Collect sparks, dodge moving drones, and beat your best score. Every five sparks adds a level. Drone speed and count rise up to the limits in `RULES`.
+## Play
 
-From level 2, each level also attempts to add a solid wall block, up to eight. Walls stop the player and bounce drones. Blocks leave open corridors and never appear on the player or a drone; if all available positions are occupied, that level skips adding a wall. Sparks spawn clear of walls, and restarting clears all walls.
+Select **Enter the gauntlet**. Move with WASD or arrow keys; touch devices also have direction buttons. Start at the green ENTRY in the upper left. Follow four connected corridors: right, down, left, down, right, down, then left to the yellow EXIT.
 
-## Play locally
+Pink spikes and cannonballs end the run on contact. Cannons flash a warning along their firing lane before releasing a ball. Duck into the blue bunker alcoves to let shots pass. Later sectors have faster cannonballs and shorter firing intervals. There are no checkpoints: retry returns you to the entry. Reaching the exit wins the game, and your fastest escape is saved when browser storage is available.
 
-1. Extract the ZIP. Keep its folders together.
-2. Double-click `index.html` to open it in a browser.
-3. Select **Start game**. Move with **WASD** or the **arrow keys**. On a touch screen, hold the direction buttons under the arena.
-4. If you hit a drone, choose **Play again**. Each new round resets the score and level. The best score is saved where the browser permits local storage.
+The full rectangular course stays visible so you can plan your route. Keyboard diagonals have the same speed as straight movement. Hidden tabs suspend gameplay.
 
-The game runs offline. You only need a browser and a text editor. After editing a file, save it and refresh the browser.
+## Files
 
-## Find your way around
+- `index.html`: page, instructions, HUD, overlays, touch controls.
+- `game.js`: course geometry, stickman movement, solid boundary checks, spike collision, telegraphed cannons, projectile collision, win/retry state, rendering.
+- `style.css`: responsive cabinet, page palette and controls.
+- `starter/`: original movement-only workshop exercise, kept as a separate demo.
+- `EXERCISES.md`: workshop exercises and checks.
 
-| File | What to edit |
-| --- | --- |
-| `index.html` | Title, mission, controls and legend |
-| `style.css` | Page palette and layout, with colors grouped at the top |
-| `game.js` | Arena colors in `THEME`, movement and difficulty in `RULES`, art in `draw()` |
-| `starter/index.html` | Movement-only demo for the instructor or participants |
-| `starter/starter.js` | Short game loop and two marked pickup exercise hooks |
-| `EXERCISES.md` | Live demo sequence, Codex prompt and test checkpoints |
+## Tune difficulty
 
-In the full game, `frame()` repeatedly calls `update()` and `draw()`. The update moves the objects, checks for collisions and changes the score or game state. The draw function paints the current state. `dt` is elapsed time in seconds, so speeds are expressed in pixels per second. Full-game positions are object centers. The starter uses top-left positions to match Canvas's `fillRect()`.
+In `game.js`, `RULES` controls stickman speed and collision sizes. `rows`, `corridors`, `bunkers` and `spikes` define the map. Cannon speed and firing intervals increase by sector inside `update()`. Keep bunker entrances open and corridors wide enough for the player's collision footprint when editing geometry.
 
-## Remix after the roulette
+## Quick playtest
 
-For an underwater theme, make the player a diver, sparks into pearls, and drones into jellyfish. Change the palette in `THEME` and `style.css`, set `collectiblePlural` to `"pearls"`, and update the mission and legend in `index.html`. Edit the collision headline in `endRound()`. Once the theme reads consistently, change one rule and play a round to see its effect.
+Test WASD, arrow keys and diagonal movement. Try crossing the solid divider between corridors. Navigate around alternating spikes, wait inside a bunker as a cannonball passes, and check that a hit ends the run. Retry should reset position, time and projectiles. Follow the whole winding route to the exit and verify the victory panel and best time. Check touch buttons at a narrow window width.
