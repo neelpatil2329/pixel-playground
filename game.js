@@ -1,13 +1,13 @@
 // THEME: Replace these colors and nouns after the theme roulette.
 const THEME = {
   background: "#0b1426", grid: "#1b2a43", player: "#70edcf",
-  collectible: "#ffdc76", hazard: "#ff778e", collectiblePlural: "sparks"
+  collectible: "#ffdc76", hazard: "#ff778e", wall: "#657b9e", collectiblePlural: "sparks"
 };
 
 // RULES: Speeds are in Canvas pixels per second.
 const RULES = {
   playerSpeed: 270, hazardSpeed: 115, speedPerLevel: 22,
-  maxHazardSpeed: 235, pointsPerLevel: 5, maxHazards: 8
+  maxHazardSpeed: 235, pointsPerLevel: 5, maxHazards: 8, maxWalls: 8
 };
 
 const canvas = document.querySelector("#arena");
@@ -27,7 +27,7 @@ const touches = new Map();
 const storageKey = "pixel-playground-best";
 
 let state = "ready";
-let player, collectible, hazards, score, level;
+let player, collectible, hazards, walls, score, level;
 let best = 0;
 let lastTime;
 
@@ -40,6 +40,7 @@ try {
 function resetRound() {
   player = { x: width / 2, y: height / 2, size: 26 };
   hazards = [];
+  walls = [];
   collectible = undefined;
   score = 0;
   level = 1;
@@ -81,13 +82,14 @@ function overlaps(a, b, gap = 0) {
   return Math.abs(a.x - b.x) < reach && Math.abs(a.y - b.y) < reach;
 }
 
-function openSpot(size, blockers, gap) {
+function openSpot(size, blockers, gap = 0) {
   // Scan a grid so placement always finishes, even when the arena gets busy.
   const spots = [];
   for (let y = 24; y <= height - 24; y += 28) {
     for (let x = 24; x <= width - 24; x += 28) {
       const spot = { x, y, size };
-      if (blockers.every(blocker => !overlaps(spot, blocker, gap))) spots.push(spot);
+      if (blockers.every(blocker => !overlaps(spot, blocker, gap)) &&
+          walls.every(wall => !overlaps(spot, wall, 8))) spots.push(spot);
     }
   }
   return spots[Math.floor(Math.random() * spots.length)];
@@ -110,27 +112,49 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
+function addWall() {
+  if (walls.length >= RULES.maxWalls) return;
+  const spots = [];
+  // Separate blocks leave corridors wider than the player and clear arena edges.
+  for (let y = 96; y <= height - 96; y += 120) {
+    for (let x = 96; x <= width - 96; x += 120) {
+      const spot = { x, y, size: 56 };
+      if ([player, ...hazards, ...walls].every(object => !overlaps(spot, object, 24))) {
+        spots.push(spot);
+      }
+    }
+  }
+  if (spots.length) walls.push(spots[Math.floor(Math.random() * spots.length)]);
+}
+
+function moveAxis(object, axis, distance) {
+  const edge = object.size / 2;
+  const limit = axis === "x" ? width : height;
+  const next = clamp(object[axis] + distance, edge, limit - edge);
+  object[axis] = next;
+  for (const wall of walls) {
+    if (overlaps(object, wall)) {
+      object[axis] = wall[axis] - Math.sign(distance) * (object.size + wall.size) / 2;
+    }
+  }
+  return object[axis] !== next || next === edge || next === limit - edge;
+}
+
 function movePlayer(dt) {
   const held = key => keys.has(key) || [...touches.values()].includes(key);
   const dx = Number(held("arrowright") || held("d")) - Number(held("arrowleft") || held("a"));
   const dy = Number(held("arrowdown") || held("s")) - Number(held("arrowup") || held("w"));
   // Normalize so moving diagonally is just as fast.
   const distance = RULES.playerSpeed * dt / (Math.hypot(dx, dy) || 1);
-  const edge = player.size / 2;
-  player.x = clamp(player.x + dx * distance, edge, width - edge);
-  player.y = clamp(player.y + dy * distance, edge, height - edge);
+  moveAxis(player, "x", dx * distance);
+  moveAxis(player, "y", dy * distance);
 }
 
 function moveHazards(dt) {
   const speed = Math.min(RULES.maxHazardSpeed, RULES.hazardSpeed + (level - 1) * RULES.speedPerLevel);
   for (const hazard of hazards) {
-    const edge = hazard.size / 2;
-    hazard.x += hazard.dx * speed * dt;
-    hazard.y += hazard.dy * speed * dt;
-    if (hazard.x < edge || hazard.x > width - edge) hazard.dx *= -1;
-    if (hazard.y < edge || hazard.y > height - edge) hazard.dy *= -1;
-    hazard.x = clamp(hazard.x, edge, width - edge);
-    hazard.y = clamp(hazard.y, edge, height - edge);
+    if (moveAxis(hazard, "x", hazard.dx * speed * dt)) hazard.dx *= -1;
+    if (moveAxis(hazard, "y", hazard.dy * speed * dt)) hazard.dy *= -1;
   }
 }
 
@@ -153,6 +177,7 @@ function update(dt) {
     }
     if (score % RULES.pointsPerLevel === 0) {
       level += 1;
+      addWall();
       if (hazards.length < RULES.maxHazards) addHazard();
     }
     placeCollectible();
@@ -172,6 +197,14 @@ function draw() {
   ctx.fillStyle = THEME.grid;
   for (let x = 0; x < width; x += 24) ctx.fillRect(x, 0, 1, height);
   for (let y = 0; y < height; y += 24) ctx.fillRect(0, y, width, 1);
+
+  for (const wall of walls) {
+    drawSquare(wall, THEME.wall);
+    ctx.strokeStyle = THEME.grid;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(wall.x - wall.size / 2 + 4, wall.y - wall.size / 2 + 4,
+      wall.size - 8, wall.size - 8);
+  }
 
   if (collectible) {
     ctx.save();

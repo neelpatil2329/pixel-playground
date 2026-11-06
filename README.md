@@ -4,6 +4,8 @@
 
 Collect sparks, dodge moving drones, and beat your best score. Every five sparks adds a level. Drone speed and count rise up to the limits in `RULES`.
 
+From level 2, each level also attempts to add a solid wall block, up to eight. Walls stop the player and bounce drones. Blocks leave open corridors and never appear on the player or a drone; if all available positions are occupied, that level skips adding a wall. Sparks spawn clear of walls, and restarting clears all walls.
+
 ## Play locally
 
 1. Extract the ZIP. Keep its folders together.

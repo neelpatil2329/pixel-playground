@@ -36,6 +36,7 @@ button:focus-visible { outline: 2px solid white; outline-offset: 3px; }
 kbd { color: var(--text); font: inherit; }
 .spark { color: var(--spark); }
 .drone { color: var(--drone); }
+.wall { color: #657b9e; }
 .touch { display: none; justify-content: center; gap: 8px; margin-top: 14px; }
 .touch button { min-width: 48px; touch-action: none; user-select: none; }
 footer { margin-top: 16px; color: var(--muted); }
